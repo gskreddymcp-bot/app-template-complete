@@ -1,0 +1,86 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - '*'
+
+stages:
+  - stage: build_test
+    displayName: Build and Test
+    jobs:
+      - job: backend
+        steps:
+          - script: echo "Build/test backend"
+      - job: web
+        steps:
+          - script: echo "Build/test web"
+      - job: mobile
+        steps:
+          - script: echo "Build/test mobile"
+
+  - stage: security_gates
+    displayName: Security Gates
+    dependsOn: build_test
+    jobs:
+      - job: sast
+        steps:
+          - script: echo "Run SAST"
+      - job: deps_scan
+        steps:
+          - script: echo "Dependency scan"
+      - job: sbom_publish
+        steps:
+          - script: echo "Generate/publish SBOM"
+      - job: secret_scan
+        steps:
+          - script: echo "Secret scanning (ensure no service-role key leaks)"
+
+  - stage: supabase_gates
+    displayName: Supabase Gates
+    dependsOn: security_gates
+    jobs:
+      - job: migration_validate
+        steps:
+          - script: echo "Validate Supabase migrations ordering and syntax"
+      - job: sql_lint
+        steps:
+          - script: echo "Run SQL lint checks"
+      - job: rls_policy_tests
+        steps:
+          - script: echo "Run RLS allow/deny policy tests"
+
+  - stage: deploy_dev
+    dependsOn: supabase_gates
+    jobs:
+      - job: deploy
+        steps:
+          - script: echo "Deploy app services to Dev"
+          - script: echo "Apply Supabase migrations to Dev"
+
+  - stage: deploy_qa
+    dependsOn: deploy_dev
+    jobs:
+      - job: deploy
+        steps:
+          - script: echo "Deploy to QA + smoke"
+          - script: echo "Validate auth/storage/realtime happy paths"
+
+  - stage: deploy_preprod
+    dependsOn: deploy_qa
+    jobs:
+      - job: deploy
+        steps:
+          - script: echo "Deploy to PreProd + performance checks"
+
+  - stage: release_prod
+    dependsOn: deploy_preprod
+    jobs:
+      - job: phased_release
+        steps:
+          - script: echo "Release to Prod with phased rollout and health gates"
+          - script: echo "Monitor auth failures, DB latency, storage errors"
+          - script: echo "Stop/rollback if SLO thresholds are breached"
